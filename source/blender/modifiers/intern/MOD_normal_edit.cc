@@ -213,7 +213,6 @@ static void normalEditModifier_do_radial(NormalEditModifierData *enmd,
                                          Mesh *mesh,
                                          short (*clnors)[2],
                                          blender::MutableSpan<blender::float3> loop_normals,
-                                         blender::Span<blender::float3> poly_normals,
                                          const short mix_mode,
                                          const float mix_factor,
                                          const float mix_limit,
@@ -315,8 +314,7 @@ static void normalEditModifier_do_radial(NormalEditModifierData *enmd,
   if (do_polynors_fix &&
       polygons_check_flip(
           loops, nos.data(), &mesh->ldata, polys, BKE_mesh_poly_normals_for_write(mesh))) {
-    /* We need to recompute vertex normals! */
-    BKE_mesh_normals_tag_dirty(mesh);
+    mesh->runtime->vert_normals_dirty = true;
   }
   const bool *sharp_faces = static_cast<const bool *>(
       CustomData_get_layer_named(&mesh->pdata, CD_PROP_BOOL, "sharp_face"));
@@ -325,7 +323,7 @@ static void normalEditModifier_do_radial(NormalEditModifierData *enmd,
                                               polys,
                                               loops,
                                               mesh->vert_normals(),
-                                              poly_normals,
+                                              mesh->poly_normals(),
                                               sharp_faces,
                                               sharp_edges,
                                               nos,
@@ -341,7 +339,6 @@ static void normalEditModifier_do_directional(NormalEditModifierData *enmd,
                                               Mesh *mesh,
                                               short (*clnors)[2],
                                               blender::MutableSpan<blender::float3> loop_normals,
-                                              const blender::Span<blender::float3> poly_normals,
                                               const short mix_mode,
                                               const float mix_factor,
                                               const float mix_limit,
@@ -422,7 +419,7 @@ static void normalEditModifier_do_directional(NormalEditModifierData *enmd,
   if (do_polynors_fix &&
       polygons_check_flip(
           loops, nos.data(), &mesh->ldata, polys, BKE_mesh_poly_normals_for_write(mesh))) {
-    BKE_mesh_normals_tag_dirty(mesh);
+    mesh->runtime->vert_normals_dirty = true;
   }
   const bool *sharp_faces = static_cast<const bool *>(
       CustomData_get_layer_named(&mesh->pdata, CD_PROP_BOOL, "sharp_face"));
@@ -431,7 +428,7 @@ static void normalEditModifier_do_directional(NormalEditModifierData *enmd,
                                               polys,
                                               loops,
                                               mesh->vert_normals(),
-                                              poly_normals,
+                                              mesh->poly_normals(),
                                               sharp_faces,
                                               sharp_edges,
                                               nos,
@@ -513,9 +510,6 @@ static Mesh *normalEditModifier_do(NormalEditModifierData *enmd,
 
   CustomData *ldata = &result->ldata;
 
-  const blender::Span<blender::float3> vert_normals = result->vert_normals();
-  const blender::Span<blender::float3> poly_normals = result->poly_normals();
-
   bke::MutableAttributeAccessor attributes = result->attributes_for_write();
   bke::SpanAttributeWriter<bool> sharp_edges = attributes.lookup_or_add_for_write_span<bool>(
       "sharp_edge", ATTR_DOMAIN_EDGE);
@@ -533,8 +527,8 @@ static Mesh *normalEditModifier_do(NormalEditModifierData *enmd,
                                           polys,
                                           loops,
                                           {},
-                                          vert_normals,
-                                          poly_normals,
+                                          result->vert_normals(),
+                                          result->poly_normals(),
                                           sharp_edges.span.data(),
                                           sharp_faces,
                                           true,
@@ -546,7 +540,7 @@ static Mesh *normalEditModifier_do(NormalEditModifierData *enmd,
 
   if (clnors == nullptr) {
     clnors = static_cast<short(*)[2]>(
-        CustomData_add_layer(ldata, CD_CUSTOMLOOPNORMAL, CD_SET_DEFAULT, nullptr, loops.size()));
+        CustomData_add_layer(ldata, CD_CUSTOMLOOPNORMAL, CD_SET_DEFAULT, loops.size()));
   }
 
   MOD_get_vgroup(ob, result, enmd->defgrp_name, &dvert, &defgrp_index);
@@ -558,7 +552,6 @@ static Mesh *normalEditModifier_do(NormalEditModifierData *enmd,
                                  result,
                                  clnors,
                                  loop_normals,
-                                 poly_normals,
                                  enmd->mix_mode,
                                  enmd->mix_factor,
                                  enmd->mix_limit,
@@ -578,7 +571,6 @@ static Mesh *normalEditModifier_do(NormalEditModifierData *enmd,
                                       result,
                                       clnors,
                                       loop_normals,
-                                      poly_normals,
                                       enmd->mix_mode,
                                       enmd->mix_factor,
                                       enmd->mix_limit,
